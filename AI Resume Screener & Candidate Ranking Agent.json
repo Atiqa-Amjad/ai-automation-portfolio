@@ -1,0 +1,408 @@
+{
+  "name": "AI Resume Screener & Candidate Ranking Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "Resume",
+        "options": {
+          "joinPages": true,
+          "keepSource": "json"
+        }
+      },
+      "id": "c6161093-9016-4214-883e-db39e1b4d9be",
+      "name": "Extract Resume Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        432,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cand-name",
+              "name": "candidateName",
+              "type": "string",
+              "value": "={{ $json['Full Name'] ?? '' }}"
+            },
+            {
+              "id": "cand-email",
+              "name": "candidateEmail",
+              "type": "string",
+              "value": "={{ $json['Email Address'] ?? '' }}"
+            },
+            {
+              "id": "job-title",
+              "name": "jobTitle",
+              "type": "string",
+              "value": "={{ $json['Job Title'] ?? '' }}"
+            },
+            {
+              "id": "job-reqs",
+              "name": "jobRequirements",
+              "type": "string",
+              "value": "={{ $json['Key Requirements (optional)'] || 'Not specified - evaluate general professionalism and role fit' }}"
+            },
+            {
+              "id": "resume-text",
+              "name": "resumeText",
+              "type": "string",
+              "value": "={{ $json.text ?? '' }}"
+            },
+            {
+              "id": "applied-at",
+              "name": "appliedAt",
+              "type": "string",
+              "value": "={{ $json.submittedAt ?? $now.toISO() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "57bfc46f-f6ee-4285-b2ec-3ed388cae97f",
+      "name": "Normalize Application Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        624,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ 'Job Title: ' + $json.jobTitle + '\\nJob Requirements: ' + $json.jobRequirements + '\\n\\nCandidate Resume:\\n' + $json.resumeText }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an expert AI recruiter with a background in psychology-informed candidate evaluation. Given a job title, its requirements, and a candidate's resume text, evaluate genuine fit - not just keyword matching. 1) candidate_score: rate 1-10 based on how well experience, skills, and communication style match the role. 2) fit_level: 'Strong Fit' (8-10), 'Moderate Fit' (5-7), or 'Weak Fit' (1-4). 3) key_strengths: concrete, specific strengths relevant to this role (1-2 sentences). 4) key_gaps: honest, specific gaps or missing qualifications (1-2 sentences). 5) summary: a 1-2 sentence overall recommendation. Never fabricate experience the resume does not mention. Be fair and avoid bias unrelated to job-relevant qualifications."
+        }
+      },
+      "id": "c5417bfa-cc6f-46d2-ae8f-452f54fe10fc",
+      "name": "Screen Candidate & Score Fit",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        832,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{ \"candidate_score\": 8, \"fit_level\": \"Strong Fit\", \"key_strengths\": \"3 years directly relevant support experience, clear written communication\", \"key_gaps\": \"No mention of specific helpdesk tool experience\", \"summary\": \"Experienced support candidate who closely matches the role requirements.\" }"
+      },
+      "id": "f4bdc99f-c7cb-4c7c-8744-828a7ce5867b",
+      "name": "Structured Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        992,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        }
+      },
+      "id": "a6f17f37-bc0d-45d1-9d0c-5234ad8d6d12",
+      "name": "Save Candidate to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1184,
+        144
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q4a2SmVjjgN1zEU8",
+          "name": "Google Sheets account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Normalize Application Data').item.json.candidateEmail }}",
+        "subject": "={{ 'Your Application for ' + $('Normalize Application Data').item.json.jobTitle }}",
+        "message": "={{ 'Hi ' + $('Normalize Application Data').item.json.candidateName + ',\\n\\nThank you for applying for the ' + $('Normalize Application Data').item.json.jobTitle + ' position. We have received your application and our hiring team will review it shortly. If your profile is a good match, we will reach out to schedule next steps.\\n\\nBest regards,\\n[Hiring Team]\\n[Company Name]' }}",
+        "options": {}
+      },
+      "id": "2badc3a2-3cc4-45fd-bfb4-0aa17b5cc8cd",
+      "name": "Send Application Received Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1184,
+        304
+      ],
+      "webhookId": "ee5a5ca1-6256-4815-9809-f7d4a9336e56",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "UpjBFZGz96BXA5lr",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.fit_level }}",
+              "rightValue": "Strong Fit",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b21f8a27-ba5a-4f44-b2af-0d419fdeef69",
+      "name": "Is Strong Fit?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1184,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "recruiter@example.com",
+        "subject": "={{ 'Strong Fit Candidate: ' + $('Normalize Application Data').item.json.candidateName + ' for ' + $('Normalize Application Data').item.json.jobTitle }}",
+        "message": "={{ 'Candidate: ' + $('Normalize Application Data').item.json.candidateName + '\\nEmail: ' + $('Normalize Application Data').item.json.candidateEmail + '\\nScore: ' + $json.output.candidate_score + '/10\\n\\nStrengths: ' + $json.output.key_strengths + '\\nGaps: ' + $json.output.key_gaps + '\\n\\nSummary: ' + $json.output.summary }}",
+        "options": {}
+      },
+      "id": "9c525288-dd19-42dd-9fc4-5196cda744ea",
+      "name": "Notify Recruiter of Strong Fit",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1424,
+        624
+      ],
+      "webhookId": "f76ea07e-8460-4cee-8fc1-6e9d2413e08d",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "UpjBFZGz96BXA5lr",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "## AI Resume Screener & Candidate Ranking Agent\nReceives job applications (resume file + candidate/job info) via webhook, extracts resume text, scores fit with AI, logs every candidate to a sheet, emails the candidate a confirmation, and auto-notifies the recruiter for Strong Fit candidates.\n\nUpdate \"recruiter@example.com\" in the notify step with your real recruiter inbox.",
+        "color": 6
+      },
+      "id": "061dfb22-5242-4b92-b3d4-28600b89fb31",
+      "name": "Sticky Note 75be7c7b",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        112,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "60d876ad-f7d8-4357-b16c-07c674c5d745",
+      "name": "Google Gemini Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        832,
+        512
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "TNdXXOJ1HtySNoNc",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "formTitle": "Apply for a Position",
+        "formDescription": "Please fill in your details and upload your resume (PDF). We'll review your application and get back to you.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Full Name",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Email Address",
+              "fieldType": "email",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Job Title",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Key Requirements (optional)",
+              "fieldType": "textarea"
+            },
+            {
+              "fieldLabel": "Resume",
+              "fieldType": "file",
+              "multipleFiles": false,
+              "acceptFileTypes": ".pdf",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "appendAttribution": false,
+          "buttonLabel": "Submit Application",
+          "respondWithOptions": {
+            "values": {
+              "formSubmittedText": "Thanks for applying! We've received your application and will be in touch if it's a match."
+            }
+          }
+        }
+      },
+      "id": "dd122f00-75d6-40d9-9d0a-652ce39799c5",
+      "name": "Job Application Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        224,
+        304
+      ],
+      "webhookId": "5ebbd48b-0bae-4640-b87c-b9a6ac75701c"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Extract Resume Text": {
+      "main": [
+        [
+          {
+            "node": "Normalize Application Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Application Data": {
+      "main": [
+        [
+          {
+            "node": "Screen Candidate & Score Fit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Screen Candidate & Score Fit": {
+      "main": [
+        [
+          {
+            "node": "Save Candidate to Sheet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Application Received Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Is Strong Fit?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Screen Candidate & Score Fit",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Strong Fit?": {
+      "main": [
+        [
+          {
+            "node": "Notify Recruiter of Strong Fit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Screen Candidate & Score Fit",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Job Application Form": {
+      "main": [
+        [
+          {
+            "node": "Extract Resume Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "d92aa61e-7432-4c6b-a79f-1fa7fe2dd6c2",
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8ba86c16055edea400320c814af88d99ba5e4a34a5083a0ddd0223c357d672ae"
+  },
+  "nodeGroups": [],
+  "id": "c59yK410caT4c7xG",
+  "tags": []
+}
